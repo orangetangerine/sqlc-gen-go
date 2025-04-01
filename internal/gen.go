@@ -10,10 +10,11 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
-	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/plugin-sdk-go/metadata"
 	"github.com/sqlc-dev/plugin-sdk-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
+
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
 type tmplCtx struct {
@@ -41,6 +42,9 @@ type tmplCtx struct {
 	UsesBatch                 bool
 	OmitSqlcVersion           bool
 	BuildTags                 string
+
+	// Request Context
+	Engine string
 }
 
 func (t *tmplCtx) OutputQuery(sourceName string) bool {
@@ -187,6 +191,7 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		SqlcVersion:               req.SqlcVersion,
 		BuildTags:                 options.BuildTags,
 		OmitSqlcVersion:           options.OmitSqlcVersion,
+		Engine:                    req.Settings.Engine,
 	}
 
 	if tctx.UsesCopyFrom && !tctx.SQLDriver.IsPGX() && options.SqlDriver != opts.SQLDriverGoSQLDriverMySQL {
@@ -200,8 +205,14 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		tctx.SQLDriver = opts.SQLDriverGoSQLDriverMySQL
 	}
 
-	if tctx.UsesBatch && !tctx.SQLDriver.IsPGX() {
-		return nil, errors.New(":batch* commands are only supported by pgx")
+	if tctx.UsesBatch {
+		if req.Settings.Engine == "mysql" {
+			if err := checkCompatibilityForMySQLBatch(queries); err != nil {
+				return nil, err
+			}
+		} else if !tctx.SQLDriver.IsPGX() {
+			return nil, errors.New(":batch* commands are only supported by driver: pgx or engine: mysql")
+		}
 	}
 
 	funcMap := template.FuncMap{
@@ -357,6 +368,15 @@ func checkNoTimesForMySQLCopyFrom(queries []Query) error {
 			if f.Type == "time.Time" {
 				return fmt.Errorf("values with a timezone are not yet supported")
 			}
+		}
+	}
+	return nil
+}
+
+func checkCompatibilityForMySQLBatch(queries []Query) error {
+	for _, q := range queries {
+		if q.Cmd == metadata.CmdBatchMany || q.Cmd == metadata.CmdBatchOne {
+			return fmt.Errorf("only ':batchexec' is supported by mysql engine in :batch* commands, %s", q.Cmd)
 		}
 	}
 	return nil

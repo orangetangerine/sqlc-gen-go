@@ -1,0 +1,42 @@
+{{define "batchCodeStd"}}
+{{range .GoQueries}}
+{{if eq .Cmd ":batchexec" }}
+
+{{range .Comments}}//{{.}}
+{{end -}}
+// {{.MethodName}} Batch insert {{.Arg.Type}} records.
+func (q *Queries) {{.MethodName}}(ctx context.Context{{if $.EmitMethodsWithDBArgument}}, db DBTX{{end}}, {{.Arg.SlicePair}}) (sql.Result, error) {
+    if len({{.Arg.Name}}) == 0 {
+        return driver.RowsAffected(0), nil
+    }
+    idx := strings.Index(strings.ToLower({{.ConstantName}}), "values")
+    if idx == -1 {
+        return nil, errors.New("no 'values' invalid sql: " + {{.ConstantName}})
+    }
+    idx += len("values")
+    pre := {{.ConstantName}}[:idx]
+    paramsSQL := strings.Repeat({{.ConstantName}}[idx:]+",", len({{.Arg.Name}}))
+    paramsSQL = strings.TrimSuffix(paramsSQL, ",")
+    query := pre + paramsSQL
+
+    var queryParams []any
+    {{- if .Arg.Struct }}
+      for _, a := range {{.Arg.Name}} {
+        queryParams = append(queryParams,
+        {{- range .Arg.Struct.Fields }}
+            a.{{.Name}},
+        {{- end }}
+        )
+      }
+    {{- else }}
+        for _, a := range {{.Arg.Name}} {
+            queryParams = append(queryParams, a)
+        }
+    {{- end }}
+
+    return {{ queryMethod . }}(ctx, query, queryParams...)
+}
+
+{{end}}
+{{end}}
+{{end}}

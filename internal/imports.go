@@ -5,8 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 	"github.com/sqlc-dev/plugin-sdk-go/metadata"
+
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
 type fileImports struct {
@@ -486,6 +487,11 @@ func (i *importer) batchImports() fileImports {
 	case opts.SQLDriverPGXV5:
 		pkg[ImportSpec{Path: "github.com/jackc/pgx/v5"}] = struct{}{}
 	}
+
+	// TODO should know what `engine` is chosen here
+	std["database/sql"] = struct{}{}
+	std["database/sql/driver"] = struct{}{}
+	std["strings"] = struct{}{}
 
 	return sortedImports(std, pkg)
 }
